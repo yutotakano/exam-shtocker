@@ -1,3 +1,9 @@
-session_auth_pickle # contains the pickled authenticated session!
+# contains the pickled authenticated session!
+session_auth_pickle
+
+# standard python things
 .venv
 __pycache__
+
+# standard OS things
+.DS_Store
