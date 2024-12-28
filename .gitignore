@@ -1,1 +1,3 @@
+session_auth_pickle # contains the pickled authenticated session!
 .venv
+__pycache__
