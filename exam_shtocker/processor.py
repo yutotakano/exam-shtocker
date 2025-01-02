@@ -99,6 +99,9 @@ class ExamProcessor:
                 self.session, exam.infr_code, downloaded_filepath
             )
 
+            # Add the hash to the list of uploaded hashes
+            self.uploaded_hashes_by_infr_code[exam.infr_code].append(file_hash)
+
             # Show a completed line that remains on screen by stopping the loader
             self.loader.stop(f"Done ({url}).")
             self.loader = None
