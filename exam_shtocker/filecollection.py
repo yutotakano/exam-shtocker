@@ -9,30 +9,35 @@ import pypdf
 logger = logging.getLogger(__name__)
 
 
-def get_category_slug_for_infr_code(
-    session: requests.Session, infr_code: str
-) -> Optional[str]:
+def get_category_slug_for_infr_code(session: requests.Session, infr_code: str) -> str:
     # Does not need login
     r = session.get(
         f"https://files.betterinformatics.com/api/category/slugfromeuclidcode?code={infr_code}"
     )
     if r.status_code != 200:
-        return None
+        raise Exception(
+            f"Failed ({r.status_code}) to get slug for INFR code: {infr_code}"
+        )
 
     return r.json()["value"]
 
 
 def get_hashes_for_category(session: requests.Session, slug: str) -> list[bytes]:
     logger.debug(f"Getting exam list for category {slug}...")
-    print(f"...downloading existing exams in {slug}...", end="\r")
+
+    bi_api_key = os.environ.get("BI_API_KEY")
+    if bi_api_key is None:
+        raise Exception("BI_API_KEY environment variable not set.")
 
     # Requires login
     r = session.get(
         f"https://files.betterinformatics.com/api/category/listexams/{slug}/",
-        headers={"X-COMMUNITY-SOLUTIONS-API-KEY": os.environ["BI_API_KEY"]},
+        headers={"X-COMMUNITY-SOLUTIONS-API-KEY": bi_api_key},
     )
     if r.status_code != 200:
-        return []
+        raise Exception(
+            f"Failed ({r.status_code}) to get exam list for category: {slug}."
+        )
 
     hashes: list[bytes] = []
     for exam_file in r.json()["value"]:
@@ -41,10 +46,12 @@ def get_hashes_for_category(session: requests.Session, slug: str) -> list[bytes]
         )
         r = session.get(
             f"https://files.betterinformatics.com/api/exam/pdf/exam/{exam_file['filename']}/",
-            headers={"X-COMMUNITY-SOLUTIONS-API-KEY": os.environ["BI_API_KEY"]},
+            headers={"X-COMMUNITY-SOLUTIONS-API-KEY": bi_api_key},
         )
         if r.status_code != 200:
-            return []
+            raise Exception(
+                f"Failed ({r.status_code}) to download exam {exam_file['filename']}."
+            )
 
         contents = session.get(r.json()["value"]).content
 
@@ -55,7 +62,7 @@ def get_hashes_for_category(session: requests.Session, slug: str) -> list[bytes]
     return hashes
 
 
-def get_diet_for_exam(pdf_filepath: str) -> Optional[str]:
+def try_parse_exam_pdf_diet(pdf_filepath: str) -> Optional[str]:
     pdf_reader = pypdf.PdfReader(pdf_filepath)
     text = pdf_reader.pages[0].extract_text()
     match = re.search(
@@ -64,17 +71,16 @@ def get_diet_for_exam(pdf_filepath: str) -> Optional[str]:
     )
     if match:
         return match.group(0)
+
     return None
 
 
-def upload_exam(session: requests.Session, infr_code: str, filepath: str) -> bool:
+def upload_exam(session: requests.Session, infr_code: str, filepath: str) -> str:
     logger.info(f"Uploading {filepath} for {infr_code}...")
-    # Requires login
-    slug = get_category_slug_for_infr_code(session, infr_code)
-    if not slug:
-        return False
 
-    diet = get_diet_for_exam(filepath)
+    slug = get_category_slug_for_infr_code(session, infr_code)
+
+    diet = try_parse_exam_pdf_diet(filepath)
 
     # Get the upload page to get the CSRF token in the cookies
     r = session.get("https://files.betterinformatics.com/uploadpdf/")
@@ -94,8 +100,7 @@ def upload_exam(session: requests.Session, infr_code: str, filepath: str) -> boo
         files={"file": open(filepath, "rb")},
     )
     if r.status_code != 200:
-        logger.error(f"Failed to upload {filepath} for {infr_code}.")
-        logger.error(r.text)
-        exit(1)
+        raise Exception(f"Failed to upload {filepath} for {infr_code}: {r.text}")
 
-    return r.status_code == 200
+    filename = r.json()["filename"]
+    return f"https://files.betterinformatics.com/exams/{filename}"

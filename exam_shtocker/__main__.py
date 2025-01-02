@@ -1,6 +1,7 @@
 import logging
 import argparse
 import random
+from colorama import Fore
 import requests
 import sys
 import os
@@ -11,24 +12,16 @@ import filecollection
 from typing import Optional
 import hashlib
 import tempfile
+from loader import Loader
 
 REMOTE_URL = "https://git.tardisproject.uk/betterinformatics/exam-shtocker"
 REMOTE_ISSUES_URL = REMOTE_URL + "/-/issues"
 REMOTE_VERSION_URL = REMOTE_URL + "/-/raw/main/VERSION"
 VERSION = "1.0.0"
-OUTPUT_IS_TTY = sys.stdout.isatty()
-
-
-# A quick lookup table for colors to use in the terminal. If the attached output
-# is not a console, we will disable the colors.
-class Colors:
-    DEBUG = "\033[94m" if OUTPUT_IS_TTY else ""
-    ERROR = "\033[91m" if OUTPUT_IS_TTY else ""
-    WARNING = "\033[93m" if OUTPUT_IS_TTY else ""
-    ENDC = "\033[0m" if OUTPUT_IS_TTY else ""
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -86,9 +79,10 @@ def main(args: argparse.Namespace) -> int:
     # else:
     #     logger.info("Skipping update check.")
 
-    session = auth.create_auth_session()
+    session = auth.setup_session()
     if not session:
-        logger.error("Could not create authenticated session.")
+        logger.error("Could not setup authenticated session.")
+        print(Fore.RED + "Could not setup authenticated session." + Fore.RESET)
         return 1
 
     processor = ExamProcessor(session)
@@ -97,19 +91,27 @@ def main(args: argparse.Namespace) -> int:
     while more_exams_exist:
         this_page_final, exams = scraper.scrape_exams_on_page(session, page)
         more_exams_exist = not this_page_final
-        logger.info(f"Processing page {page} with {len(exams)} exams.")
-        page += 1
+        logger.info(
+            f"Processing page {page} with {len(exams)} downloadable exams. This page is {'' if this_page_final else 'not '}the last page."
+        )
 
-        processor.process_exams(exams)
+        try:
+            processor.process_exams(exams)
+        except Exception as e:
+            print(Fore.RED + str(e) + Fore.RESET)
+            exit(1)
 
         logger.debug(f"Sleeping for 15 seconds to avoid rate-limiting...")
         time.sleep(15)
+        page += 1
     return 0
 
 
 class ExamProcessor:
     session: requests.Session
     uploaded_hashes_by_infr_code: dict[str, list[bytes]]
+
+    loader = None
 
     def __init__(self, session: requests.Session) -> None:
         self.session = session
@@ -130,24 +132,23 @@ class ExamProcessor:
         list[bytes]
             List of hashes of all exams for the given INFR code that have been uploaded.
         """
-        logger.debug(f"Getting hashes for {infr_code}...")
-        print("...finding existing exams...", end="\r")
+        if self.loader is None:
+            self.loader = Loader("Loading...", "", 0.1).start()
+
+        logger.debug(f"Getting exam hashes for {infr_code}...")
+        self.loader.desc = f"Getting exam hashes for {infr_code}..."
         if infr_code not in self.uploaded_hashes_by_infr_code:
-            logger.debug(f"Calculating hashes for {infr_code}...")
-            print("...calculating existing hashes...", end="\r")
+            self.loader.desc = f"Determining BI slug for {infr_code}..."
             slug = filecollection.get_category_slug_for_infr_code(
                 self.session, infr_code
             )
             logger.debug("Resolved infr code corresponding slug: " + str(slug))
-            if not slug:
-                logger.error(f"Could not get slug for INFR code: {infr_code}")
-                return []
-
+            logger.debug(f"Downloading and calculating hashes for {infr_code}...")
+            self.loader.desc = f"Calculating hashes for {infr_code}..."
             self.uploaded_hashes_by_infr_code[infr_code] = (
                 filecollection.get_hashes_for_category(self.session, slug)
             )
 
-        print("...comparing...", end="\r")
         return self.uploaded_hashes_by_infr_code[infr_code]
 
     def process_exams(self, exams: list[scraper.Exam]) -> None:
@@ -161,42 +162,50 @@ class ExamProcessor:
             List of exams to process.
         """
         for i, exam in enumerate(exams):
+            i_str = f"{i + 1}/{len(exams)}"
+            if self.loader is None:
+                self.loader = Loader(f"{i_str} Waiting...", "", 0.1).start()
+            else:
+                self.loader.desc = f"{i_str} Waiting..."
+
             # Sleep for up to 5 seconds between each exam to avoid having
             # ease account being flagged for abuse
             time.sleep(random.randint(1, 5))
 
-            # Check if we have the hashes of all pre-uploaded exams in this category
+            logger.debug(f"{i_str} Processing exam: {exam}")
+            self.loader.desc = f"{i_str} Downloading {exam.infr_code}: {exam.title}..."
 
-            logger.debug(f"{i + 1}/{len(exams)} Processing exam: {exam}")
-            print(f"({i + 1}/{len(exams)}) {exam.infr_code}: {exam.title}")
-
+            # First, download the exam to a temporary directory and calculate
+            # its file hash
             downloaded_filepath, file_hash = self.download_exam(exam)
 
             if not downloaded_filepath:
-                logger.error(f"Failed to download exam. Check with -v.")
+                logger.error(f"Failed to download exam.")
+                self.loader.cancel("Failed. Check logs with -v.")
+                self.loader = None
                 continue
 
-            # Check if the file has already been uploaded
+            # Check if the file has already been uploaded by comparing against
+            # the hashes of all exams for the INFR code on BI
             if file_hash in self.get_hashes_for_infr_code(exam.infr_code):
-                logger.warning(f"Skipping: Already uploaded.")
+                logger.info(f"Skipping upload: Already exists.")
                 os.remove(downloaded_filepath)
+                # We reuse the same loader instance, so we don't set self.loader = None
                 continue
 
             # Upload the file
-            logger.debug(f"Uploading to BI: {exam.infr_code} {exam.title}...")
-            print("...uploading...", end="\r")
-            succeeded = filecollection.upload_exam(
+            logger.debug(f"{i_str} Uploading to BI: {exam.infr_code} {exam.title}...")
+            self.loader.desc = f"{i_str} Uploading {exam.title}..."
+            url = filecollection.upload_exam(
                 self.session, exam.infr_code, downloaded_filepath
             )
-            if not succeeded:
-                logger.error(f"Failed to upload exam: {exam.title}.")
-                continue
 
-            print("...done!")
+            # Show a completed line that remains on screen by stopping the loader
+            self.loader.stop(f"Done ({url}).")
+            self.loader = None
 
     def download_exam(self, exam: scraper.Exam) -> tuple[Optional[str], bytes]:
         logger.debug(f"Downloading {exam.infr_code}: {exam.title}...")
-        print("...downloading...", end="\r")
         contents = self.session.get(
             "https://exampapers.ed.ac.uk" + exam.download_url
         ).content
@@ -215,14 +224,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     logging.basicConfig(
-        format="%(levelname)s%(message)s",
+        filename="exam_shtocker.log",
+        filemode="a",
+        format="%(asctime)s,%(msecs)d %(name)s %(levelname)s%(message)s",
+        datefmt="%H:%M:%S",
         level=logging.DEBUG if args.verbose else logging.INFO,
     )
 
     # Color the log level prefixes unless the output is INFO or is piped
-    logging.addLevelName(logging.INFO, f"")
-    logging.addLevelName(logging.ERROR, f"{Colors.ERROR}ERROR{Colors.ENDC} ")
-    logging.addLevelName(logging.WARNING, f"{Colors.WARNING}WARN{Colors.ENDC} ")
-    logging.addLevelName(logging.DEBUG, f"{Colors.DEBUG}DEBUG{Colors.ENDC} ")
+    logging.addLevelName(logging.INFO, f"   info ")
+    logging.addLevelName(logging.ERROR, f"  error ")
+    logging.addLevelName(logging.WARNING, f"warning ")
+    logging.addLevelName(logging.DEBUG, f"  debug ")
 
     sys.exit(main(args))
