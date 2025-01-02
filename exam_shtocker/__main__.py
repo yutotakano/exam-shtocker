@@ -9,7 +9,6 @@ import auth
 import scraper
 import time
 import filecollection
-from typing import Optional
 import hashlib
 import tempfile
 from loader import Loader
@@ -79,32 +78,36 @@ def main(args: argparse.Namespace) -> int:
     # else:
     #     logger.info("Skipping update check.")
 
+    # Setup authenticated session for the script
     session = auth.setup_session()
     if not session:
         logger.error("Could not setup authenticated session.")
         print(Fore.RED + "Could not setup authenticated session." + Fore.RESET)
         return 1
 
+    # Create an instance of the ExamProcessor to process exams
     processor = ExamProcessor(session)
+
+    # Loop through all pages of exams (search query: INFR) and process each one.
     more_exams_exist = True
     page = 1
-    while more_exams_exist:
-        this_page_final, exams = scraper.scrape_exams_on_page(session, page)
-        more_exams_exist = not this_page_final
-        logger.info(
-            f"Processing page {page} with {len(exams)} downloadable exams. This page is {'' if this_page_final else 'not '}the last page."
-        )
+    try:
+        while more_exams_exist:
+            this_page_final, exams = scraper.scrape_exams_on_page(session, page)
+            more_exams_exist = not this_page_final
+            logger.info(
+                f"Processing page {page} with {len(exams)} downloadable exams. This page is {'' if this_page_final else 'not '}the last page."
+            )
 
-        try:
             processor.process_exams(exams)
-        except Exception as e:
-            print(Fore.RED + str(e) + Fore.RESET)
-            exit(1)
 
-        logger.debug(f"Sleeping for 15 seconds to avoid rate-limiting...")
-        time.sleep(15)
-        page += 1
-    return 0
+            # Sleeping for 15 seconds to avoid rate-limiting
+            time.sleep(15)
+            page += 1
+        return 0
+    except Exception as e:
+        print(Fore.RED + str(e) + Fore.RESET)
+        exit(1)
 
 
 class ExamProcessor:
@@ -132,19 +135,19 @@ class ExamProcessor:
         list[bytes]
             List of hashes of all exams for the given INFR code that have been uploaded.
         """
-        if self.loader is None:
-            self.loader = Loader("Loading...", "", 0.1).start()
+        assert self.loader is not None
 
-        logger.debug(f"Getting exam hashes for {infr_code}...")
-        self.loader.desc = f"Getting exam hashes for {infr_code}..."
         if infr_code not in self.uploaded_hashes_by_infr_code:
+            logger.debug(f"Determining BI slug for {infr_code}...")
             self.loader.desc = f"Determining BI slug for {infr_code}..."
+
             slug = filecollection.get_category_slug_for_infr_code(
                 self.session, infr_code
             )
-            logger.debug("Resolved infr code corresponding slug: " + str(slug))
-            logger.debug(f"Downloading and calculating hashes for {infr_code}...")
-            self.loader.desc = f"Calculating hashes for {infr_code}..."
+
+            logger.debug(f"Downloading and calculating hashes for {str(slug)}...")
+            self.loader.desc = f"Calculating hashes for {slug}..."
+
             self.uploaded_hashes_by_infr_code[infr_code] = (
                 filecollection.get_hashes_for_category(self.session, slug)
             )
@@ -179,12 +182,6 @@ class ExamProcessor:
             # its file hash
             downloaded_filepath, file_hash = self.download_exam(exam)
 
-            if not downloaded_filepath:
-                logger.error(f"Failed to download exam.")
-                self.loader.cancel("Failed. Check logs with -v.")
-                self.loader = None
-                continue
-
             # Check if the file has already been uploaded by comparing against
             # the hashes of all exams for the INFR code on BI
             if file_hash in self.get_hashes_for_infr_code(exam.infr_code):
@@ -204,7 +201,20 @@ class ExamProcessor:
             self.loader.stop(f"Done ({url}).")
             self.loader = None
 
-    def download_exam(self, exam: scraper.Exam) -> tuple[Optional[str], bytes]:
+    def download_exam(self, exam: scraper.Exam) -> tuple[str, bytes]:
+        """Given an Exam object, download the exam from exampapers to a
+        temporary file and return the file path and hash.
+
+        Parameters
+        ----------
+        exam : scraper.Exam
+            Exam to download.
+
+        Returns
+        -------
+        tuple[Optional[str], bytes]
+            File path of the downloaded exam and its hash.
+        """
         logger.debug(f"Downloading {exam.infr_code}: {exam.title}...")
         contents = self.session.get(
             "https://exampapers.ed.ac.uk" + exam.download_url

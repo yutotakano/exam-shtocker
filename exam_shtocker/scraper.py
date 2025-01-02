@@ -7,6 +7,8 @@ logger = logging.getLogger(__name__)
 
 
 class Exam:
+    """Represents an exam paper on exampaers.ed.ac.uk"""
+
     def __init__(self, title: str, infr_code: str, download_url: str):
         self.title = title
         self.infr_code = infr_code
@@ -22,6 +24,30 @@ class Exam:
 def scrape_exams_on_page(
     session: requests.Session, page: int
 ) -> tuple[bool, list[Exam]]:
+    """Given a page number, scrape and return all exams on that page on
+    exampapers.ed.ac.uk. The page number is 1-indexed and is used to paginate
+    the search results of "INFR" by 100 items per page.
+
+    Parameters
+    ----------
+    session : requests.Session
+        Session to use for the request.
+    page : int
+        Page number to scrape. 1-indexed.
+
+    Returns
+    -------
+    tuple[bool, list[Exam]]
+        Whether this is the last page, and a list of exams on the page.
+
+    Raises
+    ------
+    Exception
+        If the request fails.
+    Exception
+        If the pagination-info element is not found, which is needed to check if
+        this is the last page.
+    """
     loader = Loader(f"Retrieving exams on page {page}...", "", 0.1).start()
 
     r = session.post(
