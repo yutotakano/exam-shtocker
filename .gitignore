@@ -1,5 +1,6 @@
 # contains the pickled authenticated session!
 session_auth_pickle
+exam_shtocker.log
 
 # standard python things
 .venv
