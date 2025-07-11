@@ -159,8 +159,9 @@ def main(args: argparse.Namespace) -> int:
 
             processor.process_exams(exams, args.dry_run, args.continue_on_unknown_code)
 
-            # Sleeping for 15 seconds to avoid rate-limiting
-            time.sleep(15)
+            if not this_page_final:
+                # Sleeping for 15 seconds to avoid rate-limiting
+                time.sleep(15)
             page += 1
         return 0
     except Exception as e:
