@@ -48,6 +48,13 @@ parser.add_argument(
     const="",
     metavar="PREFIXES",
 )
+parser.add_argument(
+    "--academic-year",
+    help="Specify the academic year to filter exams by. Format: YYYY/YYYY. If not provided, all exams will be processed.",
+    type=str,
+    default=None,
+    metavar="YYYY/YYYY",
+)
 
 
 def main(args: argparse.Namespace) -> int:
@@ -75,6 +82,7 @@ def main(args: argparse.Namespace) -> int:
     else:
         logger.info("Skipping update check.")
 
+    # Warn about dry run if specified
     if args.dry_run:
         logger.warning("Running as a dry run.")
         print(
@@ -88,6 +96,7 @@ def main(args: argparse.Namespace) -> int:
             + Fore.RESET
         )
 
+    # Validate the continue_on_unknown_code argument if provided
     if args.continue_on_unknown_code is not None:
         if args.continue_on_unknown_code == "":
             args.continue_on_unknown_code = [""]  # prefix to match all unknown codes
@@ -105,6 +114,26 @@ def main(args: argparse.Namespace) -> int:
             "Will error on unknown codes. Use --continue-on-unknown-code to change this behavior."
         )
 
+    # Validate the academic year format if provided
+    if args.academic_year:
+        logger.info(f"Filtering exams by academic year: {args.academic_year}")
+        if (
+            len(args.academic_year) != 9
+            or args.academic_year[4] != "/"
+            or (
+                not args.academic_year[:4].isdigit()
+                or not args.academic_year[5:9].isdigit()
+            )
+            or int(args.academic_year[:4]) != int(args.academic_year[5:9]) - 1
+        ):
+            logger.error("Invalid academic year format.")
+            print(
+                Fore.RED
+                + "Academic year format must be YYYY/YYYY where the second is 1 greater than the first."
+                + Fore.RESET
+            )
+            return 1
+
     # Setup authenticated session for the script
     session = auth.setup_session()
     if not session:
@@ -120,7 +149,9 @@ def main(args: argparse.Namespace) -> int:
     page = 0
     try:
         while more_exams_exist:
-            this_page_final, exams = scraper.scrape_exams_on_page(session, page)
+            this_page_final, exams = scraper.scrape_exams_on_page(
+                session, page, args.academic_year
+            )
             more_exams_exist = not this_page_final
             logger.info(
                 f"Processing page {page} with {len(exams)} downloadable exams. This page is {'' if this_page_final else 'not '}the last page."

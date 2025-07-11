@@ -22,7 +22,7 @@ class Exam:
 
 
 def scrape_exams_on_page(
-    session: requests.Session, page: int
+    session: requests.Session, page: int, academic_year: str | None = None
 ) -> tuple[bool, list[Exam]]:
     """Given a page number, scrape and return all exams on that page on
     exampapers.ed.ac.uk. The page number is 0-indexed and is used to paginate
@@ -34,6 +34,8 @@ def scrape_exams_on_page(
         Session to use for the request.
     page : int
         Page number to scrape. 0-indexed.
+    academic_year : str | None
+        Academic year to filter exams by. If None, all exams will be returned.
 
     Returns
     -------
@@ -63,9 +65,12 @@ def scrape_exams_on_page(
             # Traverse API resources to get PDF links in one go - see DSpace API docs
             "embed": "bundles/bitstreams",
             # Only include items with a PDF available
-            "f.has_content_in_original_bundle": "true,equals"
-        }
+            "f.has_content_in_original_bundle": "true,equals",
+            # Filter by academic year if provided
+            **({"f.datetemporal": academic_year + ",equals"} if academic_year else {}),
+        },
     )
+
     if r.status_code != 200:
         raise Exception(f"Failed to get page {page}. Status code: {r.status_code}")
 
