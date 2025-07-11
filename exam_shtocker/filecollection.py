@@ -8,6 +8,9 @@ import pypdf
 
 logger = logging.getLogger(__name__)
 
+bi_api_key = os.environ.get("BI_API_KEY")
+if bi_api_key is None:
+    raise Exception("BI_API_KEY environment variable not set.")
 
 def get_category_slug_for_infr_code(session: requests.Session, infr_code: str) -> str:
     """Get the Better Informatics category slug for a given INFR EUCLID code.
@@ -70,10 +73,6 @@ def get_hashes_for_category(session: requests.Session, slug: str) -> list[bytes]
         If the download of an exam fails.
     """
     logger.debug(f"Getting exam list for category {slug}...")
-
-    bi_api_key = os.environ.get("BI_API_KEY")
-    if bi_api_key is None:
-        raise Exception("BI_API_KEY environment variable not set.")
 
     # Requires login
     r = session.get(
