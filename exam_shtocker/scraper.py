@@ -76,50 +76,83 @@ def scrape_exams_on_page(
 
     data = r.json()
     if "_embedded" not in data or "searchResult" not in data["_embedded"]:
-        raise Exception("Unexpected response format from the API: _embedded.searchResult not found")
+        raise Exception(
+            "Unexpected response format from the API: _embedded.searchResult not found"
+        )
+
+    search_result = data["_embedded"]["searchResult"]
 
     # Check if this is the final page using the pagination info
-    if ("page" not in data["_embedded"]["searchResult"] or
-        "totalPages" not in data["_embedded"]["searchResult"]["page"] or
-        "number" not in data["_embedded"]["searchResult"]["page"] or
-        "size" not in data["_embedded"]["searchResult"]["page"]):
-        raise Exception("Unexpected response format from the API: _embedded.searchResult.page.totalPages/number not found")
+    if (
+        "page" not in search_result
+        or "totalPages" not in search_result["page"]
+        or "number" not in search_result["page"]
+    ):
+        raise Exception(
+            "Unexpected response format from the API: searchResult.page.totalPages/number not found"
+        )
 
-    this_page_final = data["_embedded"]["searchResult"]["page"]["totalPages"] == data["_embedded"]["searchResult"]["page"]["number"] + 1
-    items_on_page = data["_embedded"]["searchResult"]["page"]["size"]
+    this_page_final = (
+        search_result["page"]["totalPages"] == search_result["page"]["number"] + 1
+    )
+    items_on_page = len(search_result["_embedded"]["objects"])
 
     # Parse exams
     exams: list[Exam] = []
-    if ("_embedded" not in data["_embedded"]["searchResult"] or
-        "objects" not in data["_embedded"]["searchResult"]["_embedded"]):
-        raise Exception("Unexpected response format from the API: _embedded.searchResult._embedded.objects not found")
+    if "_embedded" not in search_result or "objects" not in search_result["_embedded"]:
+        raise Exception(
+            "Unexpected response format from the API: searchResult._embedded.objects not found"
+        )
 
-    for exam_node in data["_embedded"]["searchResult"]["_embedded"]["objects"]:
-        if "_embedded" not in exam_node or "indexableObject" not in exam_node["_embedded"]:
-            raise Exception("Unexpected response format from the API: Exam node doesn't have indexableObject")
+    for exam_node in search_result["_embedded"]["objects"]:
+        if (
+            "_embedded" not in exam_node
+            or "indexableObject" not in exam_node["_embedded"]
+        ):
+            raise Exception(
+                "Unexpected response format from the API: Exam node doesn't have indexableObject"
+            )
 
         if "metadata" not in exam_node["_embedded"]["indexableObject"]:
-            raise Exception("Unexpected response format from the API: indexableObject doesn't have metadata")
+            raise Exception(
+                "Unexpected response format from the API: indexableObject doesn't have metadata"
+            )
 
-        if ("dc.identifier" not in exam_node["_embedded"]["indexableObject"]["metadata"] or
-            "dc.date.issued" not in exam_node["_embedded"]["indexableObject"]["metadata"] or
-            "dc.title" not in exam_node["_embedded"]["indexableObject"]["metadata"]):
-            raise Exception("Unexpected response format from the API: indexableObject metadata missing euclid code or exam date")
+        metadata = exam_node["_embedded"]["indexableObject"]["metadata"]
 
-        course_code = exam_node["_embedded"]["indexableObject"]["metadata"]["dc.identifier"][0]["value"]
-        title = exam_node["_embedded"]["indexableObject"]["metadata"]["dc.title"][0]["value"]
+        if (
+            "dc.identifier" not in metadata
+            or "dc.date.issued" not in metadata
+            or "dc.title" not in metadata
+        ):
+            raise Exception(
+                "Unexpected response format from the API: metadata missing euclid code or exam date"
+            )
+
+        course_code = metadata["dc.identifier"][0]["value"]
+        title = metadata["dc.title"][0]["value"]
 
         # There's a lot of useless nesting in the DSpace API when requesting embedded resources
-        if ("_embedded" not in exam_node["_embedded"]["indexableObject"] or
-            "bundles" not in exam_node["_embedded"]["indexableObject"]["_embedded"] or
-            "_embedded" not in exam_node["_embedded"]["indexableObject"]["_embedded"]["bundles"] or
-            "bundles" not in exam_node["_embedded"]["indexableObject"]["_embedded"]["bundles"]["_embedded"]):
-            raise Exception("Unexpected response format from the API: indexableObject doesn't have bundles")
+        if (
+            "_embedded" not in exam_node["_embedded"]["indexableObject"]
+            or "bundles" not in exam_node["_embedded"]["indexableObject"]["_embedded"]
+            or "_embedded"
+            not in exam_node["_embedded"]["indexableObject"]["_embedded"]["bundles"]
+            or "bundles"
+            not in exam_node["_embedded"]["indexableObject"]["_embedded"]["bundles"][
+                "_embedded"
+            ]
+        ):
+            raise Exception(
+                "Unexpected response format from the API: indexableObject doesn't have bundles"
+            )
 
         # Get all bitstream nodes in all bundles
         bitstreams = itertools.chain.from_iterable(
             bundle["_embedded"]["bitstreams"]["_embedded"]["bitstreams"]
-            for bundle in exam_node["_embedded"]["indexableObject"]["_embedded"]["bundles"]["_embedded"]["bundles"]
+            for bundle in exam_node["_embedded"]["indexableObject"]["_embedded"][
+                "bundles"
+            ]["_embedded"]["bundles"]
         )
 
         # Filter for the bitstream in the original bundle, which contains the PDF
@@ -130,8 +163,6 @@ def scrape_exams_on_page(
         download_url = original_node["_links"]["content"]["href"]
         exams.append(Exam(title, course_code, download_url))
 
-    loader.stop(
-        f"{items_on_page} exams downloadable."
-    )
+    loader.stop(f"{items_on_page} exams downloadable.")
 
     return this_page_final, exams
