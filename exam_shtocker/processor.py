@@ -121,9 +121,7 @@ class ExamProcessor:
             File path of the downloaded exam and its hash.
         """
         logger.debug(f"Downloading {exam.infr_code}: {exam.title}...")
-        contents = self.session.get(
-            "https://exampapers.ed.ac.uk" + exam.download_url
-        ).content
+        contents = self.session.get(exam.download_url).content
         file_hash = hashlib.sha256(contents).digest()
 
         # write to tmp file

@@ -71,7 +71,7 @@ def main(args: argparse.Namespace) -> int:
 
     # Loop through all pages of exams (search query: INFR) and process each one.
     more_exams_exist = True
-    page = 1
+    page = 0
     try:
         while more_exams_exist:
             this_page_final, exams = scraper.scrape_exams_on_page(session, page)
