@@ -56,7 +56,7 @@ class ExamProcessor:
 
         return self.uploaded_hashes_by_infr_code[infr_code]
 
-    def process_exams(self, exams: list[scraper.Exam]) -> None:
+    def process_exams(self, exams: list[scraper.Exam], dry_run: bool) -> None:
         """Process a list of exams by downloading each one.
 
         Parameters
@@ -65,6 +65,9 @@ class ExamProcessor:
             Authenticated session to use for downloading.
         exams : list[scraper.Exam]
             List of exams to process.
+        dry_run : bool
+            If True, the function will not actually upload the file, but will
+            print what would be uploaded.
         """
         for i, exam in enumerate(exams):
             i_str = f"{i + 1}/{len(exams)}"
@@ -95,6 +98,12 @@ class ExamProcessor:
             # Upload the file
             logger.debug(f"{i_str} Uploading to BI: {exam.infr_code} {exam.title}...")
             self.loader.desc = f"{i_str} Uploading {exam.title}..."
+            if dry_run:
+                logger.info(f"Skipping upload: Dry run.")
+                self.loader.stop(f"To upload, run without --dry-run.")
+                self.loader = None
+                continue
+
             url = filecollection.upload_exam(
                 self.session, exam.infr_code, downloaded_filepath
             )

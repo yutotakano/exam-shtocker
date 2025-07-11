@@ -32,6 +32,12 @@ parser.add_argument(
     action="store_true",
     help="Skip checking for updates for the script.",
 )
+parser.add_argument(
+    "-n",
+    "--dry-run",
+    action="store_true",
+    help="Do not upload any files, just print what would be uploaded. Still requires a valid BI_API_KEY.",
+)
 
 
 def main(args: argparse.Namespace) -> int:
@@ -59,6 +65,13 @@ def main(args: argparse.Namespace) -> int:
     else:
         logger.info("Skipping update check.")
 
+    if args.dry_run:
+        logger.warning(
+            "Running as a dry run."
+        )
+        print(Fore.YELLOW + "Dry run. The script will check for exams and print what would be uploaded, but not actually upload anything." + Fore.RESET)
+        print(Fore.YELLOW + "To upload exams, run the script without --dry-run." + Fore.RESET)
+
     # Setup authenticated session for the script
     session = auth.setup_session()
     if not session:
@@ -80,7 +93,7 @@ def main(args: argparse.Namespace) -> int:
                 f"Processing page {page} with {len(exams)} downloadable exams. This page is {'' if this_page_final else 'not '}the last page."
             )
 
-            processor.process_exams(exams)
+            processor.process_exams(exams, args.dry_run)
 
             # Sleeping for 15 seconds to avoid rate-limiting
             time.sleep(15)
