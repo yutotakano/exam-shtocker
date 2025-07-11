@@ -163,9 +163,9 @@ class ExamProcessor:
         file_hash = hashlib.sha256(contents).digest()
 
         # write to tmp file
-        _, name = tempfile.mkstemp(suffix=".pdf")
-        with open(name, "wb") as f:
-            f.write(contents)
+        f = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        f.write(contents)
+        f.close()
 
-        logger.debug(f"Downloaded to {name} with hash {file_hash}")
-        return name, file_hash
+        logger.debug(f"Downloaded to {f.name} with hash {file_hash}")
+        return f.name, file_hash

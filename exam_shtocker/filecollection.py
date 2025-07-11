@@ -167,20 +167,21 @@ def upload_exam(session: requests.Session, infr_code: str, filepath: str) -> str
     # Get the upload page to get the CSRF token in the cookies
     r = session.get("https://files.betterinformatics.com/uploadpdf/")
 
-    r = session.post(
-        f"https://files.betterinformatics.com/api/exam/upload/exam/",
-        headers={
-            "X-COMMUNITY-SOLUTIONS-API-KEY": os.environ["BI_API_KEY"],
-            "X-CSRFToken": session.cookies["csrftoken"],
-            # Referer needed to pass the CSRF check in addition to cookies
-            "Referer": f"https://files.betterinformatics.com/uploadpdf/",
-        },
-        data={
-            "category": slug,
-            "displayname": diet or f"{infr_code} - Unknown diet",
-        },
-        files={"file": open(filepath, "rb")},
-    )
+    with open(filepath, "rb") as file:
+        r = session.post(
+            f"https://files.betterinformatics.com/api/exam/upload/exam/",
+            headers={
+                "X-COMMUNITY-SOLUTIONS-API-KEY": os.environ["BI_API_KEY"],
+                "X-CSRFToken": session.cookies["csrftoken"],
+                # Referer needed to pass the CSRF check in addition to cookies
+                "Referer": f"https://files.betterinformatics.com/uploadpdf/",
+            },
+            data={
+                "category": slug,
+                "displayname": diet or f"{infr_code} - Unknown diet",
+            },
+            files={"file": file},
+        )
     if r.status_code != 200:
         raise Exception(f"Failed to upload {filepath} for {infr_code}: {r.text}")
 
