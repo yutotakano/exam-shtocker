@@ -56,7 +56,12 @@ class ExamProcessor:
 
         return self.uploaded_hashes_by_infr_code[infr_code]
 
-    def process_exams(self, exams: list[scraper.Exam], dry_run: bool) -> None:
+    def process_exams(
+        self,
+        exams: list[scraper.Exam],
+        dry_run: bool,
+        continue_on_unknown_code: list[str] | None,
+    ) -> None:
         """Process a list of exams by downloading each one.
 
         Parameters
@@ -68,6 +73,10 @@ class ExamProcessor:
         dry_run : bool
             If True, the function will not actually upload the file, but will
             print what would be uploaded.
+        continue_on_unknown_code : list[str] | None
+            If None, the function will error on unknown codes. If a list of
+            prefixes is provided, the function will skip any exam with a prefix
+            in the list and error on any other unknown code.
         """
         for i, exam in enumerate(exams):
             i_str = f"{i + 1}/{len(exams)}"
@@ -89,18 +98,38 @@ class ExamProcessor:
 
             # Check if the file has already been uploaded by comparing against
             # the hashes of all exams for the INFR code on BI
-            if file_hash in self.get_hashes_for_infr_code(exam.infr_code):
-                logger.info(f"Skipping upload: Already exists.")
-                os.remove(downloaded_filepath)
-                # We reuse the same loader instance, so we don't set self.loader = None
-                continue
+            try:
+                if file_hash in self.get_hashes_for_infr_code(exam.infr_code):
+                    logger.info(f"Skipping upload: Already exists.")
+                    os.remove(downloaded_filepath)
+                    # We reuse the same loader instance, so we don't set self.loader = None
+                    continue
+            except Exception as e:
+                if continue_on_unknown_code is not None:
+                    # If we are continuing on unknown codes, we skip this exam
+                    if any(
+                        exam.infr_code.startswith(prefix)
+                        for prefix in continue_on_unknown_code
+                    ):
+                        logger.warning(
+                            f"Skipping {exam.infr_code}: {exam.title} due to code matching known continuation prefixes."
+                        )
+                        self.loader.stop(
+                            f"Skipping: {exam.infr_code} does not exist on BI and --continue-on-unknown-code provided."
+                        )
+                        self.loader = None
+                        os.remove(downloaded_filepath)
+                        continue
+                raise e
 
             # Upload the file
             logger.debug(f"{i_str} Uploading to BI: {exam.infr_code} {exam.title}...")
             self.loader.desc = f"{i_str} Uploading {exam.title}..."
             if dry_run:
                 logger.info(f"Skipping upload: Dry run.")
-                self.loader.stop(f"To upload, run without --dry-run.")
+                self.loader.stop(
+                    f"Skipping: Dry run. To upload, run without --dry-run."
+                )
                 self.loader = None
                 continue
 
