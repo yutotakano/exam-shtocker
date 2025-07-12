@@ -1,3 +1,4 @@
+import datetime
 import itertools
 import requests
 import logging
@@ -9,13 +10,14 @@ logger = logging.getLogger(__name__)
 class Exam:
     """Represents an exam paper on exampaers.ed.ac.uk"""
 
-    def __init__(self, title: str, infr_code: str, download_url: str):
+    def __init__(self, title: str, infr_code: str, year: str, download_url: str):
         self.title = title
         self.infr_code = infr_code
+        self.year = year
         self.download_url = download_url
 
     def __str__(self):
-        return f"{self.infr_code}: {self.title} - {self.download_url}"
+        return f"{self.infr_code}: {self.title} ({self.year}) - {self.download_url}"
 
     def __repr__(self):
         return str(self)
@@ -130,6 +132,10 @@ def scrape_exams_on_page(
             )
 
         course_code = metadata["dc.identifier"][0]["value"]
+        # Parse "YYYY-MM-DD" as date and and create "YYYY MMM"
+        year = datetime.datetime.strptime(
+            metadata["dc.date.issued"][0]["value"], "%Y-%m-%d"
+        ).strftime("%Y %b")
         title = metadata["dc.title"][0]["value"]
 
         # There's a lot of useless nesting in the DSpace API when requesting embedded resources
@@ -161,7 +167,7 @@ def scrape_exams_on_page(
         ][0]
 
         download_url = original_node["_links"]["content"]["href"]
-        exams.append(Exam(title, course_code, download_url))
+        exams.append(Exam(title, course_code, year, download_url))
 
     loader.stop(f"{items_on_page} exams downloadable.")
 

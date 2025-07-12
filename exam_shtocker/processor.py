@@ -140,8 +140,8 @@ class ExamProcessor:
                 raise e
 
             # Upload the file
-            logger.debug(f"{i_str} Uploading to BI: {exam.infr_code} {exam.title}...")
-            self.loader.desc = f"{i_str} Uploading {exam.title}..."
+            logger.debug(f"{i_str} Uploading to BI...")
+            self.loader.desc = f"{i_str} Uploading {exam.title} ({exam.year})..."
             if dry_run:
                 logger.info(f"Skipping upload: Dry run.")
                 self.loader.stop(
