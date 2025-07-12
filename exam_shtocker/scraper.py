@@ -133,9 +133,16 @@ def scrape_exams_on_page(
 
         course_code = metadata["dc.identifier"][0]["value"]
         # Parse "YYYY-MM-DD" as date and and create "YYYY MMM"
-        year = datetime.datetime.strptime(
-            metadata["dc.date.issued"][0]["value"], "%Y-%m-%d"
-        ).strftime("%Y %b")
+        try:
+            year = datetime.datetime.strptime(
+                metadata["dc.date.issued"][0]["value"], "%Y-%m-%d"
+            ).strftime("%Y %b")
+        except ValueError:
+            # Old exams (around 2020) could be in format "DD-MM-YYYY"
+            year = datetime.datetime.strptime(
+                metadata["dc.date.issued"][0]["value"], "%d-%m-%Y"
+            ).strftime("%Y %b")
+
         title = metadata["dc.title"][0]["value"]
 
         # There's a lot of useless nesting in the DSpace API when requesting embedded resources
