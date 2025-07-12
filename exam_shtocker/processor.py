@@ -90,7 +90,7 @@ class ExamProcessor:
             # ease account being flagged for abuse
             time.sleep(random.randint(1, 5))
 
-            logger.debug(f"{i_str} Processing exam: {exam}")
+            logger.info(f"{i_str} Processing exam: {exam}")
             self.loader.desc = f"{i_str} Downloading {exam.infr_code}: {exam.title}..."
 
             # First, download the exam to a temporary directory and calculate
