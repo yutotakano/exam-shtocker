@@ -11,7 +11,6 @@ from VERSION import VERSION
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -179,6 +178,9 @@ if __name__ == "__main__":
         datefmt="%H:%M:%S",
         level=logging.DEBUG if args.verbose else logging.INFO,
     )
+
+    # Set the logger level to match the verbose flag
+    logger.setLevel(logging.DEBUG if args.verbose else logging.INFO)
 
     # Color the log level prefixes unless the output is INFO or is piped
     logging.addLevelName(logging.INFO, f"   info ")
