@@ -167,7 +167,8 @@ class ExamProcessor:
         # Loader must be stopped after processing all exams or else it will try
         # to conflict with the next page's scraping loader
         if self.loader is not None:
-            self.loader.stop("All exams on page processed.")
+            self.loader.desc = "All exams on page processed."
+            self.loader.stop("")
             self.loader = None
 
     def download_exam(self, exam: scraper.Exam) -> tuple[str, bytes]:
