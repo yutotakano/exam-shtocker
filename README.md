@@ -68,10 +68,14 @@ is the pseudocode of the script's functionality.
 ```
 1. Ask for EASE credentials and API token for BI File Collection
 2. Log in to exampapers.ed.ac.uk
-3. For each page in the search result of "INFR", for each exam in that page:
+3. Use the DSpace API (the system that exampapers use) to request a page (100)
+   of exams in the School of Informatics, with a PDF copy available. For each
+   exam:
   a. Download the exam PDF temporarily
   b. Calculate the file hash of the downloaded exam paper
-  c. On BI, find the category corresponding to the INFR code
+  c. Check if it's in a known-bad-list
+  d. On BI, find the category corresponding to the EUCLID code. Ignore or error
+     if the code isn't tracked on BI
   d. Download every exam PDF on BI within that category
   e. Calculate the hash for each exam PDF on BI in that category
   f. If no hash matches:
@@ -98,9 +102,9 @@ and a file hash check (check if the file is already in S3).
 
 We chose method 2 because it seemed slightly more reliable despite being slower.
 The script performs the hash check by downloading every exam on File Collection
-(in the matching category by INFR code) and comparing the file hash against the
-one on exampapers. It is very slow and taxing on File Collection's server, but
-we think it's acceptable given the script isn't supposed to be run frequently.
+(in the matching category by EUCLID code) and comparing the file hash against
+the one on exampapers. It is very slow and taxing on File Collection's server,
+but we think it's acceptable given the script isn't supposed to be run frequently.
 
 Some optimisation is included in the script, such as storing a cache of hashes
-per INFR code in local memory.
+per EUCLID code in local memory.
