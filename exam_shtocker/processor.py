@@ -161,6 +161,12 @@ class ExamProcessor:
             self.loader.stop(f"Done ({url}).")
             self.loader = None
 
+        # Loader must be stopped after processing all exams or else it will try
+        # to conflict with the next page's scraping loader
+        if self.loader is not None:
+            self.loader.stop("All exams on page processed.")
+            self.loader = None
+
     def download_exam(self, exam: scraper.Exam) -> tuple[str, bytes]:
         """Given an Exam object, download the exam from exampapers to a
         temporary file and return the file path and hash.
