@@ -124,10 +124,17 @@ class ExamProcessor:
                         logger.warning(
                             f"Skipping {exam.infr_code}: {exam.title} due to code matching known continuation prefixes."
                         )
-                        self.loader.stop(
-                            f"Skipping: {exam.infr_code} does not exist on BI and --continue-on-unknown-code provided."
-                        )
-                        self.loader = None
+                        if (
+                            len(continue_on_unknown_code) == 1
+                            and continue_on_unknown_code[0] == ""
+                        ):
+                            # If the user specified continuation but without any prefixes,
+                            # warn explicitly that it was skipped. But if they gave prefixes,
+                            # silently skip.
+                            self.loader.stop(
+                                f"Skipping: {exam.infr_code} {exam.title} does not exist on BI and --continue-on-unknown-code provided. Provide an explicit skip prefix to hide this message."
+                            )
+                            self.loader = None
                         os.remove(downloaded_filepath)
                         continue
                 raise e
