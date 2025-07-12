@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "exam-shtocker"
-version = "1.0.0"
+version = "2.0.0"
 description = ""
 authors = ["kilo <kilo@tardisproject.uk>"]
 readme = "README.md"
