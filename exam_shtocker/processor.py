@@ -15,47 +15,48 @@ logger = logging.getLogger(__name__)
 
 class ExamProcessor:
     session: requests.Session
-    uploaded_hashes_by_infr_code: dict[str, list[bytes]]
+    uploaded_hashes_by_euclid_code: dict[str, list[bytes]]
 
     loader = None
 
     def __init__(self, session: requests.Session) -> None:
         self.session = session
-        self.uploaded_hashes_by_infr_code = {}
+        self.uploaded_hashes_by_euclid_code = {}
 
-    def get_hashes_for_infr_code(self, infr_code: str) -> list[bytes]:
-        """Get the hashes of all exams for a given INFR code that have been
+    def get_hashes_for_euclid_code(self, euclid_code: str) -> list[bytes]:
+        """Get the hashes of all exams for a given EUCLID code that have been
         uploaded. If this is unknown, the function will download all files in
         the category and store the hashes.
 
         Parameters
         ----------
-        infr_code : str
-            INFR code to get the hashes for.
+        euclid_code : str
+            EUCLID code to get the hashes for.
 
         Returns
         -------
         list[bytes]
-            List of hashes of all exams for the given INFR code that have been uploaded.
+            List of hashes of all exams for the given EUCLID code that have been
+            uploaded.
         """
         assert self.loader is not None
 
-        if infr_code not in self.uploaded_hashes_by_infr_code:
-            logger.debug(f"Determining BI slug for {infr_code}...")
-            self.loader.desc = f"Determining BI slug for {infr_code}..."
+        if euclid_code not in self.uploaded_hashes_by_euclid_code:
+            logger.debug(f"Determining BI slug for {euclid_code}...")
+            self.loader.desc = f"Determining BI slug for {euclid_code}..."
 
-            slug = filecollection.get_category_slug_for_infr_code(
-                self.session, infr_code
+            slug = filecollection.get_category_slug_for_euclid_code(
+                self.session, euclid_code
             )
 
             logger.debug(f"Downloading and calculating hashes for {str(slug)}...")
             self.loader.desc = f"Calculating hashes for {slug}..."
 
-            self.uploaded_hashes_by_infr_code[infr_code] = (
+            self.uploaded_hashes_by_euclid_code[euclid_code] = (
                 filecollection.get_hashes_for_category(self.session, slug)
             )
 
-        return self.uploaded_hashes_by_infr_code[infr_code]
+        return self.uploaded_hashes_by_euclid_code[euclid_code]
 
     def process_exams(
         self,
@@ -91,7 +92,9 @@ class ExamProcessor:
             time.sleep(random.randint(1, 5))
 
             logger.info(f"{i_str} Processing exam: {exam}")
-            self.loader.desc = f"{i_str} Downloading {exam.infr_code}: {exam.title}..."
+            self.loader.desc = (
+                f"{i_str} Downloading {exam.euclid_code}: {exam.title}..."
+            )
 
             # First, download the exam to a temporary directory and calculate
             # its file hash
@@ -101,15 +104,15 @@ class ExamProcessor:
             # Check if this is a known bad hash
             if file_hash in known_bads.known_bad_hashes:
                 logger.info(
-                    f"Skipping {exam.infr_code}: {exam.title} due to known bad hash."
+                    f"Skipping {exam.euclid_code}: {exam.title} due to known bad hash."
                 )
                 os.remove(downloaded_filepath)
                 continue
 
             # Check if the file has already been uploaded by comparing against
-            # the hashes of all exams for the INFR code on BI
+            # the hashes of all exams for the EUCLID code on BI
             try:
-                if file_hash in self.get_hashes_for_infr_code(exam.infr_code):
+                if file_hash in self.get_hashes_for_euclid_code(exam.euclid_code):
                     logger.info(f"Skipping upload: Already exists.")
                     os.remove(downloaded_filepath)
                     # We reuse the same loader instance, so we don't set self.loader = None
@@ -118,11 +121,11 @@ class ExamProcessor:
                 if continue_on_unknown_code is not None:
                     # If we are continuing on unknown codes, we skip this exam
                     if any(
-                        exam.infr_code.startswith(prefix)
+                        exam.euclid_code.startswith(prefix)
                         for prefix in continue_on_unknown_code
                     ):
                         logger.warning(
-                            f"Skipping {exam.infr_code}: {exam.title} due to code matching known continuation prefixes."
+                            f"Skipping {exam.euclid_code}: {exam.title} due to code matching known continuation prefixes."
                         )
                         if (
                             len(continue_on_unknown_code) == 1
@@ -132,7 +135,7 @@ class ExamProcessor:
                             # warn explicitly that it was skipped. But if they gave prefixes,
                             # silently skip.
                             self.loader.stop(
-                                f"Skipping: {exam.infr_code} {exam.title} does not exist on BI and --continue-on-unknown-code provided. Provide an explicit skip prefix to hide this message."
+                                f"Skipping: {exam.euclid_code} {exam.title} does not exist on BI and --continue-on-unknown-code provided. Provide an explicit skip prefix to hide this message."
                             )
                             self.loader = None
                         os.remove(downloaded_filepath)
@@ -151,11 +154,11 @@ class ExamProcessor:
                 continue
 
             url = filecollection.upload_exam(
-                self.session, exam.infr_code, downloaded_filepath
+                self.session, exam.euclid_code, downloaded_filepath
             )
 
             # Add the hash to the list of uploaded hashes
-            self.uploaded_hashes_by_infr_code[exam.infr_code].append(file_hash)
+            self.uploaded_hashes_by_euclid_code[exam.euclid_code].append(file_hash)
 
             # Show a completed line that remains on screen by stopping the loader
             self.loader.stop(f"Done ({url}).")
@@ -181,7 +184,7 @@ class ExamProcessor:
         tuple[Optional[str], bytes]
             File path of the downloaded exam and its hash.
         """
-        logger.debug(f"Downloading {exam.infr_code}: {exam.title}...")
+        logger.debug(f"Downloading {exam.euclid_code}: {exam.title}...")
         contents = self.session.get(exam.download_url).content
         file_hash = hashlib.sha256(contents).digest()
 

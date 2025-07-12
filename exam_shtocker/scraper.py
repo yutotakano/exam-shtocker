@@ -10,14 +10,14 @@ logger = logging.getLogger(__name__)
 class Exam:
     """Represents an exam paper on exampaers.ed.ac.uk"""
 
-    def __init__(self, title: str, infr_code: str, year: str, download_url: str):
+    def __init__(self, title: str, euclid_code: str, year: str, download_url: str):
         self.title = title
-        self.infr_code = infr_code
+        self.euclid_code = euclid_code
         self.year = year
         self.download_url = download_url
 
     def __str__(self):
-        return f"{self.infr_code}: {self.title} ({self.year}) - {self.download_url}"
+        return f"{self.euclid_code}: {self.title} ({self.year}) - {self.download_url}"
 
     def __repr__(self):
         return str(self)
