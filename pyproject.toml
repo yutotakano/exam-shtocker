@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "exam-shtocker"
-version = "1.0.0"
+version = "2.0.0"
 description = ""
 authors = ["kilo <kilo@tardisproject.uk>"]
 readme = "README.md"
@@ -10,7 +10,6 @@ package-mode = false
 python = "^3.11"
 requests = "^2.32.3"
 tqdm = "^4.66.6"
-beautifulsoup4 = "^4.12.3"
 rich = "^13.9.3"
 pypdf = "^5.1.0"
 colorama = "^0.4.6"

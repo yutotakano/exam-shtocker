@@ -11,7 +11,6 @@ from VERSION import VERSION
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -31,6 +30,29 @@ parser.add_argument(
     "--skip-update-check",
     action="store_true",
     help="Skip checking for updates for the script.",
+)
+parser.add_argument(
+    "-n",
+    "--dry-run",
+    action="store_true",
+    help="Do not upload any files, just print what would be uploaded. Still requires a valid BI_API_KEY.",
+)
+parser.add_argument(
+    "--continue-on-unknown-code",
+    help="Provide without arguments to keep processing when encountering any unknown code. Provide with an argument to specify comma-separated prefixes to skip, and otherwise error on unknown codes. For example, `--continue-on-unknown-code EPCC` will skip EPCC codes but error on unknown INFR codes.",
+    action="store",
+    default=None,
+    type=str,
+    nargs="?",
+    const="",
+    metavar="PREFIXES",
+)
+parser.add_argument(
+    "--academic-year",
+    help="Specify the academic year to filter exams by. Format: YYYY/YYYY. If not provided, all exams will be processed.",
+    type=str,
+    default=None,
+    metavar="YYYY/YYYY",
 )
 
 
@@ -59,6 +81,58 @@ def main(args: argparse.Namespace) -> int:
     else:
         logger.info("Skipping update check.")
 
+    # Warn about dry run if specified
+    if args.dry_run:
+        logger.warning("Running as a dry run.")
+        print(
+            Fore.YELLOW
+            + "Dry run. The script will check for exams and print what would be uploaded, but not actually upload anything."
+            + Fore.RESET
+        )
+        print(
+            Fore.YELLOW
+            + "To upload exams, run the script without --dry-run."
+            + Fore.RESET
+        )
+
+    # Validate the continue_on_unknown_code argument if provided
+    if args.continue_on_unknown_code is not None:
+        if args.continue_on_unknown_code == "":
+            args.continue_on_unknown_code = [""]  # prefix to match all unknown codes
+            logger.info("Continuing without error on any unknown code.")
+        else:
+            args.continue_on_unknown_code = args.continue_on_unknown_code.split(",")
+            args.continue_on_unknown_code = [
+                prefix.strip() for prefix in args.continue_on_unknown_code
+            ]
+            logger.info(
+                f"Continuing without error on unknown codes with prefixes: {args.continue_on_unknown_code}"
+            )
+    else:
+        logger.info(
+            "Will error on unknown codes. Use --continue-on-unknown-code to change this behavior."
+        )
+
+    # Validate the academic year format if provided
+    if args.academic_year:
+        logger.info(f"Filtering exams by academic year: {args.academic_year}")
+        if (
+            len(args.academic_year) != 9
+            or args.academic_year[4] != "/"
+            or (
+                not args.academic_year[:4].isdigit()
+                or not args.academic_year[5:9].isdigit()
+            )
+            or int(args.academic_year[:4]) != int(args.academic_year[5:9]) - 1
+        ):
+            logger.error("Invalid academic year format.")
+            print(
+                Fore.RED
+                + "Academic year format must be YYYY/YYYY where the second is 1 greater than the first."
+                + Fore.RESET
+            )
+            return 1
+
     # Setup authenticated session for the script
     session = auth.setup_session()
     if not session:
@@ -71,19 +145,22 @@ def main(args: argparse.Namespace) -> int:
 
     # Loop through all pages of exams (search query: INFR) and process each one.
     more_exams_exist = True
-    page = 1
+    page = 0
     try:
         while more_exams_exist:
-            this_page_final, exams = scraper.scrape_exams_on_page(session, page)
+            this_page_final, exams = scraper.scrape_exams_on_page(
+                session, page, args.academic_year
+            )
             more_exams_exist = not this_page_final
             logger.info(
                 f"Processing page {page} with {len(exams)} downloadable exams. This page is {'' if this_page_final else 'not '}the last page."
             )
 
-            processor.process_exams(exams)
+            processor.process_exams(exams, args.dry_run, args.continue_on_unknown_code)
 
-            # Sleeping for 15 seconds to avoid rate-limiting
-            time.sleep(15)
+            if not this_page_final:
+                # Sleeping for 15 seconds to avoid rate-limiting
+                time.sleep(15)
             page += 1
         return 0
     except Exception as e:
@@ -97,10 +174,13 @@ if __name__ == "__main__":
     logging.basicConfig(
         filename="exam_shtocker.log",
         filemode="a",
-        format="%(asctime)s,%(msecs)d %(name)s %(levelname)s%(message)s",
+        format="%(asctime)s.%(msecs)03d %(name)s %(levelname)s%(message)s",
         datefmt="%H:%M:%S",
         level=logging.DEBUG if args.verbose else logging.INFO,
     )
+
+    # Set the logger level to match the verbose flag
+    logger.setLevel(logging.DEBUG if args.verbose else logging.INFO)
 
     # Color the log level prefixes unless the output is INFO or is piped
     logging.addLevelName(logging.INFO, f"   info ")

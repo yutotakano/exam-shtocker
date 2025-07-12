@@ -4,9 +4,9 @@ import requests
 from VERSION import VERSION
 from colorama import Fore
 
-REMOTE_URL = "https://git.tardisproject.uk/betterinformatics/exam-shtocker"
-REMOTE_ISSUES_URL = REMOTE_URL + "/-/issues"
-REMOTE_VERSION_URL = REMOTE_URL + "/-/raw/main/exam_shtocker/VERSION.py"
+REMOTE_URL = "https://github.com/yutotakano/exam-shtocker"
+REMOTE_ISSUES_URL = "https://github.com/yutotakano/exam-shtocker/issues"
+REMOTE_VERSION_URL = "https://raw.githubusercontent.com/yutotakano/exam-shtocker/refs/heads/main/exam_shtocker/VERSION.py"
 
 
 logger = logging.getLogger(__name__)

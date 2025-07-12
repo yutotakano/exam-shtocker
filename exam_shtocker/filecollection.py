@@ -8,15 +8,21 @@ import pypdf
 
 logger = logging.getLogger(__name__)
 
+bi_api_key = os.environ.get("BI_API_KEY")
+if bi_api_key is None:
+    raise Exception("BI_API_KEY environment variable not set.")
 
-def get_category_slug_for_infr_code(session: requests.Session, infr_code: str) -> str:
-    """Get the Better Informatics category slug for a given INFR EUCLID code.
+
+def get_category_slug_for_euclid_code(
+    session: requests.Session, euclid_code: str
+) -> str:
+    """Get the Better Informatics category slug for a given EUCLID code.
 
     Parameters
     ----------
     session : requests.Session
         Session to use for the request.
-    infr_code : str
+    euclid_code : str
         EUCLID code of the course.
 
     Returns
@@ -27,16 +33,16 @@ def get_category_slug_for_infr_code(session: requests.Session, infr_code: str) -
     Raises
     ------
     Exception
-        If the request fails, for example if the INFR code is invalid or if no
+        If the request fails, for example if the EUCLID code is invalid or if no
         category was found on BI matching the provided EUCLID code.
     """
     # Does not need login
     r = session.get(
-        f"https://files.betterinformatics.com/api/category/slugfromeuclidcode?code={infr_code}"
+        f"https://files.betterinformatics.com/api/category/slugfromeuclidcode?code={euclid_code}"
     )
     if r.status_code != 200:
         raise Exception(
-            f"Failed ({r.status_code}) to get slug for INFR code: {infr_code}"
+            f"Failed ({r.status_code}) to get slug for EUCLID code: {euclid_code}"
         )
 
     return r.json()["value"]
@@ -52,8 +58,8 @@ def get_hashes_for_category(session: requests.Session, slug: str) -> list[bytes]
     session : requests.Session
         Session to use for the request.
     slug : str
-        Slug of the category to get the hashes for. Use get_category_slug_for_infr_code
-        to get the slug for a given INFR code.
+        Slug of the category to get the hashes for. Use
+        get_category_slug_for_euclid_code to get the slug for a given code.
 
     Returns
     -------
@@ -70,10 +76,6 @@ def get_hashes_for_category(session: requests.Session, slug: str) -> list[bytes]
         If the download of an exam fails.
     """
     logger.debug(f"Getting exam list for category {slug}...")
-
-    bi_api_key = os.environ.get("BI_API_KEY")
-    if bi_api_key is None:
-        raise Exception("BI_API_KEY environment variable not set.")
 
     # Requires login
     r = session.get(
@@ -134,15 +136,15 @@ def try_parse_exam_pdf_diet(pdf_filepath: str) -> Optional[str]:
     return None
 
 
-def upload_exam(session: requests.Session, infr_code: str, filepath: str) -> str:
+def upload_exam(session: requests.Session, euclid_code: str, filepath: str) -> str:
     """Upload an exam PDF to Better Informatics under the category matching the
-    given INFR EUCLID code.
+    given EUCLID code.
 
     Parameters
     ----------
     session : requests.Session
         Session to use for uploading.
-    infr_code : str
+    euclid_code : str
         EUCLID code of the course.
     filepath : str
         Path to the PDF file to upload.
@@ -159,31 +161,32 @@ def upload_exam(session: requests.Session, infr_code: str, filepath: str) -> str
         invalid, the file does not end with a .pdf extension, or there was no
         category on BI matching the provided EUCLID code.
     """
-    logger.info(f"Uploading {filepath} for {infr_code}...")
+    logger.info(f"Uploading {filepath} for {euclid_code}...")
 
-    slug = get_category_slug_for_infr_code(session, infr_code)
+    slug = get_category_slug_for_euclid_code(session, euclid_code)
 
     diet = try_parse_exam_pdf_diet(filepath)
 
     # Get the upload page to get the CSRF token in the cookies
     r = session.get("https://files.betterinformatics.com/uploadpdf/")
 
-    r = session.post(
-        f"https://files.betterinformatics.com/api/exam/upload/exam/",
-        headers={
-            "X-COMMUNITY-SOLUTIONS-API-KEY": os.environ["BI_API_KEY"],
-            "X-CSRFToken": session.cookies["csrftoken"],
-            # Referer needed to pass the CSRF check in addition to cookies
-            "Referer": f"https://files.betterinformatics.com/uploadpdf/",
-        },
-        data={
-            "category": slug,
-            "displayname": diet or f"{infr_code} - Unknown diet",
-        },
-        files={"file": open(filepath, "rb")},
-    )
+    with open(filepath, "rb") as file:
+        r = session.post(
+            f"https://files.betterinformatics.com/api/exam/upload/exam/",
+            headers={
+                "X-COMMUNITY-SOLUTIONS-API-KEY": os.environ["BI_API_KEY"],
+                "X-CSRFToken": session.cookies["csrftoken"],
+                # Referer needed to pass the CSRF check in addition to cookies
+                "Referer": f"https://files.betterinformatics.com/uploadpdf/",
+            },
+            data={
+                "category": slug,
+                "displayname": diet or f"{euclid_code} - Unknown diet",
+            },
+            files={"file": file},
+        )
     if r.status_code != 200:
-        raise Exception(f"Failed to upload {filepath} for {infr_code}: {r.text}")
+        raise Exception(f"Failed to upload {filepath} for {euclid_code}: {r.text}")
 
     filename = r.json()["filename"]
     return f"https://files.betterinformatics.com/exams/{filename}"

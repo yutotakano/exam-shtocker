@@ -1,5 +1,6 @@
+import datetime
+import itertools
 import requests
-import bs4
 import logging
 from loader import Loader
 
@@ -9,31 +10,34 @@ logger = logging.getLogger(__name__)
 class Exam:
     """Represents an exam paper on exampaers.ed.ac.uk"""
 
-    def __init__(self, title: str, infr_code: str, download_url: str):
+    def __init__(self, title: str, euclid_code: str, year: str, download_url: str):
         self.title = title
-        self.infr_code = infr_code
+        self.euclid_code = euclid_code
+        self.year = year
         self.download_url = download_url
 
     def __str__(self):
-        return f"{self.infr_code}: {self.title} - {self.download_url}"
+        return f"{self.euclid_code}: {self.title} ({self.year}) - {self.download_url}"
 
     def __repr__(self):
         return str(self)
 
 
 def scrape_exams_on_page(
-    session: requests.Session, page: int
+    session: requests.Session, page: int, academic_year: str | None = None
 ) -> tuple[bool, list[Exam]]:
     """Given a page number, scrape and return all exams on that page on
-    exampapers.ed.ac.uk. The page number is 1-indexed and is used to paginate
-    the search results of "INFR" by 100 items per page.
+    exampapers.ed.ac.uk. The page number is 0-indexed and is used to paginate
+    the search results by 100 items per page.
 
     Parameters
     ----------
     session : requests.Session
         Session to use for the request.
     page : int
-        Page number to scrape. 1-indexed.
+        Page number to scrape. 0-indexed.
+    academic_year : str | None
+        Academic year to filter exams by. If None, all exams will be returned.
 
     Returns
     -------
@@ -45,61 +49,133 @@ def scrape_exams_on_page(
     Exception
         If the request fails.
     Exception
-        If the pagination-info element is not found, which is needed to check if
-        this is the last page.
+        If any required fields are missing in the API response.
     """
     loader = Loader(f"Retrieving exams on page {page}...", "", 0.1).start()
 
-    r = session.post(
-        f"https://exampapers.ed.ac.uk/discover",
-        data={
-            "search-result": "true",
-            # Search by "INFR" to get all Informatics exams
-            "query": "infr",
-            "scope": "/",
-            "rpp": 100,
-            "etal": 0,
-            "sort_by": "dc.date.issued_dt",
-            "group_by": "none",
-            "order": "desc",
-            "page": str(page),
+    r = session.get(
+        f"https://exampapers.ed.ac.uk/server/api/discover/search/objects",
+        params={
+            # Sort by academic year descending
+            "sort": "dc.date.accessioned,DESC",
+            # Page is 0 indexed in dspace API
+            "page": page,
+            # Max 100, other granularity is in browser
+            "size": 100,
+            # Filter by informatics courses
+            "f.author": "Informatics, School of,equals",
+            # Traverse API resources to get PDF links in one go - see DSpace API docs
+            "embed": "bundles/bitstreams",
+            # Only include items with a PDF available
+            "f.has_content_in_original_bundle": "true,equals",
+            # Filter by academic year if provided
+            **({"f.datetemporal": academic_year + ",equals"} if academic_year else {}),
         },
     )
+
     if r.status_code != 200:
         raise Exception(f"Failed to get page {page}. Status code: {r.status_code}")
 
-    soup = bs4.BeautifulSoup(r.text, "html.parser")
+    data = r.json()
+    if "_embedded" not in data or "searchResult" not in data["_embedded"]:
+        raise Exception(
+            "Unexpected response format from the API: _embedded.searchResult not found"
+        )
 
-    # Find pagination-info element which contains the total number of items
-    pagination_info_elem = soup.find("p", class_="pagination-info")
-    if pagination_info_elem is None:
-        raise Exception("Could not find element with .pagination-info class.")
+    search_result = data["_embedded"]["searchResult"]
 
-    # Parse "Now showing items 101-200 of 1481" to check if we are on the last page
-    now_showing_text = pagination_info_elem.text
-    total_items = now_showing_text.split(" of ")[1]
-    total_items = int(total_items)
-    last_item_on_page = now_showing_text.split("-")[1].split(" ")[0]
-    first_item_on_page = now_showing_text.split("-")[0].split(" ")[-1]
-    last_item_on_page = int(last_item_on_page)
-    first_item_on_page = int(first_item_on_page)
-    this_page_final = last_item_on_page == total_items
+    # Check if this is the final page using the pagination info
+    if (
+        "page" not in search_result
+        or "totalPages" not in search_result["page"]
+        or "number" not in search_result["page"]
+    ):
+        raise Exception(
+            "Unexpected response format from the API: searchResult.page.totalPages/number not found"
+        )
+
+    this_page_final = (
+        search_result["page"]["totalPages"] == search_result["page"]["number"] + 1
+    )
+    items_on_page = len(search_result["_embedded"]["objects"])
 
     # Parse exams
     exams: list[Exam] = []
-    for exam_elem in soup.find_all("div", class_="ds-artifact-item"):
-        course_code = exam_elem.find("span", class_="coursecode").text
-        title = exam_elem.find("h4").text
+    if "_embedded" not in search_result or "objects" not in search_result["_embedded"]:
+        raise Exception(
+            "Unexpected response format from the API: searchResult._embedded.objects not found"
+        )
 
-        # Skip exams with no PDF available
-        if exam_elem.find("span", class_="pdf-unavailable"):
-            continue
+    for exam_node in search_result["_embedded"]["objects"]:
+        if (
+            "_embedded" not in exam_node
+            or "indexableObject" not in exam_node["_embedded"]
+        ):
+            raise Exception(
+                "Unexpected response format from the API: Exam node doesn't have indexableObject"
+            )
 
-        download_url = exam_elem.find("span", class_="pdf-download").find("a")["href"]
-        exams.append(Exam(title, course_code, download_url))
+        if "metadata" not in exam_node["_embedded"]["indexableObject"]:
+            raise Exception(
+                "Unexpected response format from the API: indexableObject doesn't have metadata"
+            )
 
-    loader.stop(
-        f"{last_item_on_page - first_item_on_page + 1} exams ({len(exams)} downloadable)."
-    )
+        metadata = exam_node["_embedded"]["indexableObject"]["metadata"]
+
+        if (
+            "dc.identifier" not in metadata
+            or "dc.date.issued" not in metadata
+            or "dc.title" not in metadata
+        ):
+            raise Exception(
+                "Unexpected response format from the API: metadata missing euclid code or exam date"
+            )
+
+        course_code = metadata["dc.identifier"][0]["value"]
+        # Parse "YYYY-MM-DD" as date and and create "YYYY MMM"
+        try:
+            year = datetime.datetime.strptime(
+                metadata["dc.date.issued"][0]["value"], "%Y-%m-%d"
+            ).strftime("%Y %b")
+        except ValueError:
+            # Old exams (around 2020) could be in format "DD-MM-YYYY"
+            year = datetime.datetime.strptime(
+                metadata["dc.date.issued"][0]["value"], "%d-%m-%Y"
+            ).strftime("%Y %b")
+
+        title = metadata["dc.title"][0]["value"]
+
+        # There's a lot of useless nesting in the DSpace API when requesting embedded resources
+        if (
+            "_embedded" not in exam_node["_embedded"]["indexableObject"]
+            or "bundles" not in exam_node["_embedded"]["indexableObject"]["_embedded"]
+            or "_embedded"
+            not in exam_node["_embedded"]["indexableObject"]["_embedded"]["bundles"]
+            or "bundles"
+            not in exam_node["_embedded"]["indexableObject"]["_embedded"]["bundles"][
+                "_embedded"
+            ]
+        ):
+            raise Exception(
+                "Unexpected response format from the API: indexableObject doesn't have bundles"
+            )
+
+        # Get all bitstream nodes in all bundles
+        bitstreams = itertools.chain.from_iterable(
+            bundle["_embedded"]["bitstreams"]["_embedded"]["bitstreams"]
+            for bundle in exam_node["_embedded"]["indexableObject"]["_embedded"][
+                "bundles"
+            ]["_embedded"]["bundles"]
+        )
+
+        # Filter for the bitstream in the original bundle, which contains the PDF
+        original_node = [
+            b for b in bitstreams if "bundleName" in b and b["bundleName"] == "ORIGINAL"
+        ][0]
+
+        download_url = original_node["_links"]["content"]["href"]
+        exams.append(Exam(title, course_code, year, download_url))
+
+    loader.stop(f"{items_on_page} exams downloadable.")
 
     return this_page_final, exams
