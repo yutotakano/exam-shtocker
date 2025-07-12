@@ -6,6 +6,7 @@ import requests
 from loader import Loader
 import logging
 import filecollection
+import known_bads
 import scraper
 import tempfile
 
@@ -95,6 +96,15 @@ class ExamProcessor:
             # First, download the exam to a temporary directory and calculate
             # its file hash
             downloaded_filepath, file_hash = self.download_exam(exam)
+            logger.info(f"{i_str} Hash: {file_hash.hex()}")
+
+            # Check if this is a known bad hash
+            if file_hash in known_bads.known_bad_hashes:
+                logger.info(
+                    f"Skipping {exam.infr_code}: {exam.title} due to known bad hash."
+                )
+                os.remove(downloaded_filepath)
+                continue
 
             # Check if the file has already been uploaded by comparing against
             # the hashes of all exams for the INFR code on BI
