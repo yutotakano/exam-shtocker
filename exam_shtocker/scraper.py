@@ -76,7 +76,12 @@ def scrape_exams_on_page(
     if r.status_code != 200:
         raise Exception(f"Failed to get page {page}. Status code: {r.status_code}")
 
-    data = r.json()
+    try:
+        data = r.json()
+    except Exception as e:
+        logger.error("Could not decode response as JSON, is the user really logged in?")
+        raise e
+
     if "_embedded" not in data or "searchResult" not in data["_embedded"]:
         raise Exception(
             "Unexpected response format from the API: _embedded.searchResult not found"
