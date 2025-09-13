@@ -29,6 +29,7 @@ The script is named `Exam-Shtocker` as a play on words containing:
 - 取得 (shu-toku) in Japanese meaning "grab/get"
 
 ## Features
+
 - Automatic exam-upload, de-duplication, and intelligent file naming
 - Interactive CLI tool with pretty colours & progress indicators
 - Session caching so credentials only need to be entered infrequently
@@ -108,3 +109,7 @@ but we think it's acceptable given the script isn't supposed to be run frequentl
 
 Some optimisation is included in the script, such as storing a cache of hashes
 per EUCLID code in local memory.
+
+## Credits
+
+[@integralbyte](https://github.com/integralbyte) for the Selenium prototype (https://github.com/integralbyte/UoEPaperScraper)[https://github.com/integralbyte/UoEPaperScraper] after ExamPapers switched from EASE to Microsoft SSO in summer 2025. Licensed under the MIT license.
