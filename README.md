@@ -112,4 +112,4 @@ per EUCLID code in local memory.
 
 ## Credits
 
-[@integralbyte](https://github.com/integralbyte) for the Selenium prototype (https://github.com/integralbyte/UoEPaperScraper)[https://github.com/integralbyte/UoEPaperScraper] after ExamPapers switched from EASE to Microsoft SSO in summer 2025. Licensed under the MIT license.
+[@integralbyte](https://github.com/integralbyte) for the [Selenium prototype](https://github.com/integralbyte/UoEPaperScraper) after ExamPapers switched from EASE to Microsoft SSO in summer 2025. Licensed under the MIT license.
