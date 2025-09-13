@@ -67,7 +67,7 @@ is the pseudocode of the script's functionality.
 
 ```
 1. Ask for EASE credentials and API token for BI File Collection
-2. Log in to exampapers.ed.ac.uk
+2. Log in to exampapers.ed.ac.uk using Selenium, copy cookies over to `requests`
 3. Use the DSpace API (the system that exampapers use) to request a page (100)
    of exams in the School of Informatics, with a PDF copy available. For each
    exam:
