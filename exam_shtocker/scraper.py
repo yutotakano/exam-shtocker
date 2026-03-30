@@ -137,16 +137,20 @@ def scrape_exams_on_page(
             )
 
         course_code = metadata["dc.identifier"][0]["value"]
-        # Parse "YYYY-MM-DD" as date and and create "YYYY MMM"
-        try:
-            year = datetime.datetime.strptime(
-                metadata["dc.date.issued"][0]["value"], "%Y-%m-%d"
-            ).strftime("%Y %b")
-        except ValueError:
-            # Old exams (around 2020) could be in format "DD-MM-YYYY"
-            year = datetime.datetime.strptime(
-                metadata["dc.date.issued"][0]["value"], "%d-%m-%Y"
-            ).strftime("%Y %b")
+        # Parse known date formats and normalize as "YYYY MMM"
+        issued_date = metadata["dc.date.issued"][0]["value"]
+        date_formats = ["%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%Y"]
+        for date_format in date_formats:
+            try:
+                year = datetime.datetime.strptime(issued_date, date_format).strftime(
+                    "%Y %b"
+                )
+                break
+            except ValueError:
+                continue
+        else:
+            raise ValueError(
+                f"Unrecognized exam issue date format: {issued_date}")
 
         title = metadata["dc.title"][0]["value"]
 
