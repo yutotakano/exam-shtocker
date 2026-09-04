@@ -14,7 +14,7 @@ rich = "^13.9.3"
 pypdf = "^5.1.0"
 colorama = "^0.4.6"
 selenium = "^4.35.0"
-
+uoe_ms_auth = "^0.1.0"
 
 [build-system]
 requires = ["poetry-core"]
